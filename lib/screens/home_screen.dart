@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../theme/design_system.dart';
 import 'diagnose_screen.dart';
 import 'history_screen.dart';
 import 'market_screen.dart';
 import 'settings_screen.dart';
+import 'prompt_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,19 +17,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  // We add 'Home' as index 0 to hold the "Landing Page" with 2 big buttons.
-  // The user asked for "Diagnose, History, Market" in the dock.
-  // We will map:
-  // 0: Landing Page (Home)
-  // 1: Diagnose
-  // 2: History
-  // 3: Market
-  // To keep the dock clean (3 items) as requested, we might need a trick.
-  // BUT for usability, I will implement 4 items effectively, or treat "Diagnose" as the Home?
-  // Let's implement 4 items for safety: Home, Diagnose, History, Market.
-
   final List<Widget> _screens = [
-    const LandingBody(), // The "2 Big Buttons" page
+    const LandingBody(),
     const DiagnoseScreen(),
     const HistoryScreen(),
     const MarketScreen(),
@@ -41,10 +33,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true, // Allow body to extend behind the floating dock
       appBar: AppBar(
-        // Leading: Vertical Three Dots for Settings (Left side as requested)
         leading: IconButton(
-          icon: const Icon(Icons.more_vert),
+          icon: const Icon(Icons.grid_view_rounded),
           onPressed: () {
             Navigator.push(
               context,
@@ -52,33 +44,155 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
         ),
-        // Title: Name of the page
-        title: Text(_selectedIndex == 0 ? 'FarmAI' : _getTitle(_selectedIndex)),
-        centerTitle: true,
-        // Actions: Avatar (Right side)
+        title: Text(
+          _selectedIndex == 0 ? 'FarmAI' : _getTitle(_selectedIndex),
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: const Text('U'), // Placeholder for User
+              backgroundColor: FarmColors.accent.withValues(alpha: 0.2),
+              child: Text('JD',
+                  style: FarmTextStyles.labelSmall.copyWith(
+                      color: FarmColors.primary, fontWeight: FontWeight.bold)),
             ),
           ),
         ],
       ),
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: _onItemTapped,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-          NavigationDestination(
-            icon: Icon(Icons.camera_alt),
-            label: 'Diagnose',
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              FarmColors.background,
+              FarmColors.surfaceContainer,
+            ],
           ),
-          NavigationDestination(icon: Icon(Icons.history), label: 'History'),
-          NavigationDestination(icon: Icon(Icons.storefront), label: 'Market'),
+        ),
+        child: _screens[_selectedIndex],
+      ),
+      bottomNavigationBar: _buildFloatingDock(),
+    );
+  }
+
+  Widget _buildFloatingDock() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Floating label above dock
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, animation) {
+                return SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.5),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutQuart,
+                  )),
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              child: _buildFloatingLabel(_selectedIndex),
+            ),
+            const SizedBox(height: 8),
+            // Dock bar
+            Container(
+              decoration: BoxDecoration(
+                color: FarmColors.surface,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: FarmStyles.floatingShadow,
+                border: Border.all(color: FarmColors.surfaceVariant),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildDockItem(0, Icons.smart_toy_rounded, 'Trang chủ'),
+                  const SizedBox(width: 8),
+                  _buildDockItem(1, Icons.camera_enhance_rounded, 'Chẩn đoán'),
+                  const SizedBox(width: 8),
+                  _buildDockItem(2, Icons.history_edu_rounded, 'Lịch sử'),
+                  const SizedBox(width: 8),
+                  _buildDockItem(3, Icons.storefront_rounded, 'Cửa hàng'),
+                ],
+              ),
+            ).animate().slideY(
+                begin: 1.0,
+                end: 0.0,
+                duration: 600.ms,
+                curve: Curves.easeOutQuart),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingLabel(int index) {
+    final labels = ['Trang chủ', 'Chẩn đoán', 'Lịch sử', 'Cửa hàng'];
+    final icons = [
+      Icons.smart_toy_rounded,
+      Icons.camera_enhance_rounded,
+      Icons.history_edu_rounded,
+      Icons.storefront_rounded,
+    ];
+
+    return Container(
+      key: ValueKey<int>(index),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: FarmStyles.primaryGradient,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: FarmColors.primary.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
         ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icons[index], color: FarmColors.accent, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            labels[index],
+            style: FarmTextStyles.labelSmall.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDockItem(int index, IconData icon, String label) {
+    final isSelected = _selectedIndex == index;
+    return GestureDetector(
+      onTap: () => _onItemTapped(index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? FarmColors.primary.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Icon(
+          icon,
+          color: isSelected ? FarmColors.primary : FarmColors.textSecondary,
+          size: 24,
+        ),
       ),
     );
   }
@@ -86,11 +200,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String _getTitle(int index) {
     switch (index) {
       case 1:
-        return 'Diagnose';
+        return 'Chẩn đoán AI';
       case 2:
-        return 'History';
+        return 'Lịch sử';
       case 3:
-        return 'Market';
+        return 'Cửa hàng';
       default:
         return 'FarmAI';
     }
@@ -103,69 +217,174 @@ class LandingBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Big Button 1: New Scan
-            Expanded(
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonal(
-                  onPressed: () {
-                    // Switch to Diagnose Tab?
-                    // For now just print. In real app, we'd use a provider or callback to switch tabs.
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Starting New Scan...')),
-                    );
-                  },
-                  style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
+            const SizedBox(height: 16),
+            Text(
+              "Chào buổi sáng,\n",
+              style: FarmTextStyles.heading1,
+            ).animate().fadeIn(duration: 800.ms).slideY(begin: 0.2, end: 0),
+
+            const SizedBox(height: 32),
+
+            // Modern Action Cards
+            _buildHeroCard(
+              context,
+              title: "Bắt đầu Chẩn đoán",
+              subtitle: "Phân tích cây trồng bằng AI",
+              icon: Icons.add_a_photo_outlined,
+              gradient: FarmStyles.primaryGradient,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const DiagnoseScreen()),
+                );
+              },
+            ).animate().scale(delay: 200.ms, duration: 400.ms),
+
+            const SizedBox(height: 20),
+
+            _buildHeroCard(
+              context,
+              title: "Hỏi đáp AI",
+              subtitle: "Chat với trợ lý FarmAI",
+              icon: Icons.chat_bubble_outline_rounded,
+              isSecondary: true,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PromptScreen()),
+                );
+              },
+            ).animate().scale(delay: 400.ms, duration: 400.ms),
+
+            const SizedBox(height: 28),
+            // Insight Section - Material 3 Card
+            Card(
+              elevation: 0,
+              color: FarmColors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: FarmStyles.cardRadius,
+                side: BorderSide(color: FarmColors.surfaceVariant),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline,
+                            color: FarmColors.warning, size: 22),
+                        const SizedBox(width: 8),
+                        Text("Thông tin trong ngày",
+                            style: FarmTextStyles.heading3),
+                      ],
                     ),
-                  ),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.add_a_photo, size: 48),
-                      SizedBox(height: 16),
-                      Text('New Diagnosis', style: TextStyle(fontSize: 24)),
-                    ],
-                  ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "Độ ẩm tối ưu cho cây Ngô. Cân nhắc giảm tưới 10% hôm nay.",
+                      style: FarmTextStyles.bodyLarge,
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-            // Big Button 2: Recent Activity
-            Expanded(
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonal(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Opening Recent Activity...'),
-                      ),
-                    );
-                  },
-                  style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.history_edu, size: 48),
-                      SizedBox(height: 16),
-                      Text('Recent Activity', style: TextStyle(fontSize: 24)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.2),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    bool isSecondary = false,
+    Gradient? gradient,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: FarmStyles.cardRadius,
+        child: Ink(
+          height: 150,
+          decoration: BoxDecoration(
+            gradient: gradient,
+            color: isSecondary ? FarmColors.surface : null,
+            borderRadius: FarmStyles.cardRadius,
+            boxShadow: FarmStyles.cardShadow,
+            border: isSecondary
+                ? Border.all(color: FarmColors.surfaceVariant)
+                : null,
+          ),
+          child: Stack(
+            children: [
+              // Decorative background circle
+              Positioned(
+                right: -20,
+                bottom: -20,
+                child: Icon(
+                  icon,
+                  size: 120,
+                  color: isSecondary
+                      ? FarmColors.textSecondary.withValues(alpha: 0.05)
+                      : Colors.white.withValues(alpha: 0.1),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isSecondary
+                            ? FarmColors.surfaceVariant
+                            : Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: isSecondary ? FarmColors.primary : Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          style: isSecondary
+                              ? FarmTextStyles.heading2
+                              : FarmTextStyles.heading2
+                                  .copyWith(color: Colors.white),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: isSecondary
+                              ? FarmTextStyles.bodyMedium
+                              : FarmTextStyles.bodyMedium.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.85)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

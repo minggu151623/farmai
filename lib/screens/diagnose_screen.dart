@@ -1,7 +1,7 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
-import 'dart:io';
+import 'package:camera/camera.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../theme/design_system.dart';
 
 class DiagnoseScreen extends StatefulWidget {
   const DiagnoseScreen({super.key});
@@ -10,177 +10,272 @@ class DiagnoseScreen extends StatefulWidget {
   State<DiagnoseScreen> createState() => _DiagnoseScreenState();
 }
 
-class _DiagnoseScreenState extends State<DiagnoseScreen>
-    with WidgetsBindingObserver {
-  CameraController? _cameraController;
-  List<CameraDescription> _cameras = [];
-  bool _isCameraInitialized = false;
-  Interpreter? _interpreter;
-  bool _isModelLoaded = false;
-  String? _imagePath;
+class _DiagnoseScreenState extends State<DiagnoseScreen> {
+  CameraController? _controller;
+  List<CameraDescription>? _cameras;
+  bool _isLoading = true;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initCamera();
-    _loadModel();
+    _initializeCamera();
   }
 
-  Future<void> _initCamera() async {
+  Future<void> _initializeCamera() async {
     try {
-      _cameras = await availableCameras();
-      if (_cameras.isNotEmpty) {
-        // Initialize the first camera (rear usually)
-        _cameraController = CameraController(
-          _cameras.first,
-          ResolutionPreset.high,
-          enableAudio: false,
-        );
+      // Request camera permission
+      final status = await Permission.camera.request();
 
-        await _cameraController!.initialize();
-        if (mounted) {
+      if (status.isGranted) {
+        _cameras = await availableCameras();
+
+        if (_cameras != null && _cameras!.isNotEmpty) {
+          _controller = CameraController(
+            _cameras![0],
+            ResolutionPreset.high,
+            enableAudio: false,
+          );
+
+          await _controller!.initialize();
+
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        } else {
           setState(() {
-            _isCameraInitialized = true;
+            _errorMessage = 'Không tìm thấy camera';
+            _isLoading = false;
           });
         }
+      } else {
+        setState(() {
+          _errorMessage = 'Cần quyền truy cập camera để chẩn đoán';
+          _isLoading = false;
+        });
       }
     } catch (e) {
-      debugPrint("Camera Error: $e");
-    }
-  }
-
-  Future<void> _loadModel() async {
-    try {
-      // Placeholder for model loading
-      // _interpreter = await Interpreter.fromAsset('assets/models/plant_disease_model.tflite');
-      // setState(() => _isModelLoaded = true);
-      debugPrint("Model loading placeholder: Model not yet in assets");
-    } catch (e) {
-      debugPrint("Model Error: $e");
+      setState(() {
+        _errorMessage = 'Lỗi khởi tạo camera: $e';
+        _isLoading = false;
+      });
     }
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cameraController?.dispose();
-    _interpreter?.close();
+    _controller?.dispose();
     super.dispose();
   }
 
-  // Manage lifecycle to pause camera when app is in background
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    final CameraController? cameraController = _cameraController;
-
-    // App state changed before we got the chance to initialize.
-    if (cameraController == null || !cameraController.value.isInitialized) {
-      return;
-    }
-
-    if (state == AppLifecycleState.inactive) {
-      cameraController.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      _initCamera();
-    }
-  }
-
   Future<void> _takePicture() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
-
-    if (_cameraController!.value.isTakingPicture) {
-      // A capture is already pending, do nothing.
+    if (_controller == null || !_controller!.value.isInitialized) {
       return;
     }
 
     try {
-      final XFile file = await _cameraController!.takePicture();
-      setState(() {
-        _imagePath = file.path;
-      });
-      // Here usually we would crop and pass _imagePath to the TFLite interpreter
-      _analyzeImage(file.path);
-    } catch (e) {
-      debugPrint(e.toString());
-    }
-  }
+      final image = await _controller!.takePicture();
 
-  void _analyzeImage(String path) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Image captured! Analysis pending model integration."),
-      ),
-    );
-  }
+      if (!mounted) return;
 
-  @override
-  Widget build(BuildContext context) {
-    if (!_isCameraInitialized) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (_imagePath != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Result'),
-          leading: IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => setState(() => _imagePath = null),
-          ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã chụp ảnh: ${image.path}'),
+          backgroundColor: FarmColors.success,
         ),
-        body: Column(
-          children: [
-            Expanded(child: Image.file(File(_imagePath!))),
-            const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text(
-                "Diagnosis: Healthy (Mock)",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
+      );
+
+      // TODO: Process image with AI model when integrated
+      // For now, just show a message
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Chẩn đoán'),
+          content: const Text(
+              'Tính năng AI đang được phát triển. Ảnh đã được lưu tại bộ nhớ tạm.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
             ),
           ],
         ),
       );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi: $e'),
+          backgroundColor: FarmColors.error,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
     }
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Full Screen Camera Preview
-          SizedBox.expand(child: CameraPreview(_cameraController!)),
+    if (_errorMessage.isNotEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64, color: FarmColors.error),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage,
+                textAlign: TextAlign.center,
+                style: FarmTextStyles.bodyLarge,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  await openAppSettings();
+                },
+                icon: const Icon(Icons.settings),
+                label: const Text('Mở Cài đặt'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: FarmColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-          // Overlay UI
-          Positioned(
-            bottom: 30,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: FloatingActionButton.large(
-                onPressed: _takePicture,
-                child: const Icon(Icons.camera),
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return const Center(child: Text('Đang tải camera...'));
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Camera preview
+        CameraPreview(_controller!),
+
+        // Overlay guides
+        CustomPaint(
+          painter: _CameraOverlayPainter(),
+        ),
+
+        // Bottom controls
+        Positioned(
+          bottom: 100,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: GestureDetector(
+              onTap: _takePicture,
+              child: Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Container(
+                  margin: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ),
+        ),
 
-          // Top Back Button
-          Positioned(
-            top: 40,
-            left: 10,
-            child: IconButton.filledTonal(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                // Determine if we need pop or switching tab.
-                // Since this is a Tab, "Back" implies going to Home Tab?
-                // Or maybe just do nothing if it's the main Diagnose tab.
-                // For now, let's just show a snackbar or allow standard Nav bar switching.
-              },
+        // Instructions
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 20,
+          left: 20,
+          right: 20,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Đặt lá cây vào khung hình và chụp',
+              textAlign: TextAlign.center,
+              style: FarmTextStyles.bodyMedium.copyWith(color: Colors.white),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+class _CameraOverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.5)
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+
+    final rect = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: size.width * 0.7,
+      height: size.height * 0.5,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, const Radius.circular(16)),
+      paint,
+    );
+
+    // Corner marks
+    final cornerLength = 30.0;
+    final cornerPaint = Paint()
+      ..color = FarmColors.accent
+      ..strokeWidth = 4
+      ..style = PaintingStyle.stroke;
+
+    // Top-left
+    canvas.drawLine(Offset(rect.left, rect.top),
+        Offset(rect.left + cornerLength, rect.top), cornerPaint);
+    canvas.drawLine(Offset(rect.left, rect.top),
+        Offset(rect.left, rect.top + cornerLength), cornerPaint);
+
+    // Top-right
+    canvas.drawLine(Offset(rect.right, rect.top),
+        Offset(rect.right - cornerLength, rect.top), cornerPaint);
+    canvas.drawLine(Offset(rect.right, rect.top),
+        Offset(rect.right, rect.top + cornerLength), cornerPaint);
+
+    // Bottom-left
+    canvas.drawLine(Offset(rect.left, rect.bottom),
+        Offset(rect.left + cornerLength, rect.bottom), cornerPaint);
+    canvas.drawLine(Offset(rect.left, rect.bottom),
+        Offset(rect.left, rect.bottom - cornerLength), cornerPaint);
+
+    // Bottom-right
+    canvas.drawLine(Offset(rect.right, rect.bottom),
+        Offset(rect.right - cornerLength, rect.bottom), cornerPaint);
+    canvas.drawLine(Offset(rect.right, rect.bottom),
+        Offset(rect.right, rect.bottom - cornerLength), cornerPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

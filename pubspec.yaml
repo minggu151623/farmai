@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.7
+  sdk: ">=3.0.0 <4.0.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -35,11 +35,18 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   camera: ^0.11.3
-  tflite_flutter: ^0.12.1
+  # tflite_flutter: ^0.12.1 (Disabled for Web)
   image: ^4.7.2
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
   google_fonts: ^7.1.0
+  flutter_animate: ^4.5.2
+  google_maps_flutter: ^2.14.0
+  image_picker: ^1.2.1
+  google_places_flutter: ^2.0.8
+  geolocator: ^12.0.0
+  http: ^1.2.1
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:
