@@ -25,6 +25,13 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   void _onItemTapped(int index) {
+    if (index == 1) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const DiagnoseScreen()),
+      );
+      return;
+    }
     setState(() {
       _selectedIndex = index;
     });

@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme/design_system.dart';
 import 'screens/splash_screen.dart';
+import 'services/plant_disease_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await PlantDiseaseService().initialize();
   runApp(const MyApp());
 }
 

@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/diagnosis_record.dart';
+import '../services/database_service.dart';
 import '../theme/design_system.dart';
 import 'diagnosis_detail_screen.dart';
 
@@ -12,64 +14,28 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   List<DiagnosisRecord> records = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initializeData();
+    _loadRecords();
   }
 
-  void _initializeData() {
-    final List<Map<String, dynamic>> datasetFake = [
-      {
-        "image":
-            "https://vietplants.com/wp-content/uploads/2024/09/Benh-heo-ru-Panama.png",
-        "date": "20/1/2026",
-        "time": "10:30",
-        "tree_name": "Cây chuối",
-        "disease_type": "Bệnh khảm lá",
-        "confidence_level": 92,
-        "overview":
-            "Bệnh khảm lá là tình trạng lá xuất hiện các vết đốm vàng xanh xen kẽ...",
-        "solutions": ["Tiêu hủy cây bệnh", "Diệt rệp muội"]
-      },
-      {
-        "image":
-            "https://vietplants.com/wp-content/uploads/2024/09/Benh-heo-ru-Moko.png",
-        "date": "21/1/2026",
-        "time": "15:45",
-        "tree_name": "Cây lúa",
-        "disease_type": "Bệnh đạo ôn",
-        "confidence_level": 85,
-        "overview": "Bệnh gây hại nặng nề nhất...",
-        "solutions": ["Giữ mực nước", "Bón phân"]
-      },
-      {
-        "image":
-            "https://vietplants.com/wp-content/uploads/2024/09/Benh-Sigatoka-tren-chuoi.png",
-        "date": "26/1/2026",
-        "time": "09:20",
-        "tree_name": "Cây cà chua",
-        "disease_type": "Héo xanh",
-        "confidence_level": 65,
-        "overview": "Héo đột ngột...",
-        "solutions": ["Nhổ bỏ"]
-      },
-    ];
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadRecords();
+  }
 
-    records = datasetFake.map((item) {
-      return DiagnosisRecord(
-        date: "${item['date']} | ${item['time']}",
-        plantName: item['tree_name'],
-        diseaseName: item['disease_type'],
-        confidence: item['confidence_level'],
-        imageUrl: item['image'],
-        overview: item['overview'] ?? "Chưa có thông tin",
-        cause: item['cause'] ?? "Chưa rõ nguyên nhân",
-        signs: item['signs'] ?? "Không có dấu hiệu",
-        solutions: List<String>.from(item['solutions'] ?? []),
-      );
-    }).toList();
+  Future<void> _loadRecords() async {
+    final data = await DatabaseService().getAllRecords();
+    if (mounted) {
+      setState(() {
+        records = data;
+        _isLoading = false;
+      });
+    }
   }
 
   void _sortByName() {
@@ -129,8 +95,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Note: This widget is used inside HomeScreen which provides the Scaffold/AppBar.
-    // We only provide the body content.
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (records.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history_rounded,
+                size: 64,
+                color: FarmColors.textSecondary.withValues(alpha: 0.3)),
+            const SizedBox(height: 16),
+            Text('Chưa có lịch sử chẩn đoán', style: FarmTextStyles.bodyLarge),
+            const SizedBox(height: 8),
+            Text('Hãy chụp ảnh lá cây để bắt đầu!',
+                style: FarmTextStyles.bodyMedium),
+          ],
+        ),
+      );
+    }
+
     return Column(
       children: [
         Padding(
@@ -157,26 +143,60 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 100),
-            itemCount: records.length,
-            separatorBuilder: (c, i) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              return _buildHistoryCard(context, records[index]);
-            },
+          child: RefreshIndicator(
+            onRefresh: _loadRecords,
+            child: ListView.separated(
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 100),
+              itemCount: records.length,
+              separatorBuilder: (c, i) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                return _buildHistoryCard(context, records[index]);
+              },
+            ),
           ),
         ),
       ],
     );
   }
 
+  Widget _buildImageWidget(DiagnosisRecord record) {
+    if (record.imagePath != null && record.imagePath!.isNotEmpty) {
+      final file = File(record.imagePath!);
+      if (file.existsSync()) {
+        return Image.file(file, width: 70, height: 70, fit: BoxFit.cover);
+      }
+    }
+    if (record.imageUrl.isNotEmpty) {
+      return Image.network(
+        record.imageUrl,
+        width: 70,
+        height: 70,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+      );
+    }
+    return _buildPlaceholder();
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      width: 70,
+      height: 70,
+      color: Colors.grey[200],
+      child: const Icon(Icons.eco_rounded, color: Colors.grey),
+    );
+  }
+
   Widget _buildHistoryCard(BuildContext context, DiagnosisRecord record) {
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (context) => DiagnosisDetailScreen(record: record)),
-      ),
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (context) => DiagnosisDetailScreen(record: record)),
+        );
+        _loadRecords(); // Refresh after returning
+      },
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -188,18 +208,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                record.imageUrl,
-                width: 70,
-                height: 70,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  width: 70,
-                  height: 70,
-                  color: Colors.grey[200],
-                  child: const Icon(Icons.broken_image, color: Colors.grey),
-                ),
-              ),
+              child: _buildImageWidget(record),
             ),
             const SizedBox(width: 15),
             Expanded(

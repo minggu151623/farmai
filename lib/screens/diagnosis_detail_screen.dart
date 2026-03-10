@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/diagnosis_record.dart';
 import '../theme/design_system.dart';
@@ -14,10 +15,7 @@ class DiagnosisDetailScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: FarmColors.surface,
         iconTheme: const IconThemeData(color: FarmColors.textPrimary),
-        title: Text(
-          "Chi tiết chẩn đoán",
-          style: FarmTextStyles.heading3,
-        ),
+        title: Text("Chi tiết chẩn đoán", style: FarmTextStyles.heading3),
         centerTitle: true,
         elevation: 0,
       ),
@@ -37,19 +35,7 @@ class DiagnosisDetailScreen extends StatelessWidget {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      record.imageUrl,
-                      width: 70,
-                      height: 70,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        width: 70,
-                        height: 70,
-                        color: Colors.grey[200],
-                        child:
-                            const Icon(Icons.broken_image, color: Colors.grey),
-                      ),
-                    ),
+                    child: _buildImage(),
                   ),
                   const SizedBox(width: 15),
                   Expanded(
@@ -102,6 +88,35 @@ class DiagnosisDetailScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildImage() {
+    if (record.imagePath != null && record.imagePath!.isNotEmpty) {
+      final file = File(record.imagePath!);
+      if (file.existsSync()) {
+        return Image.file(file, width: 70, height: 70, fit: BoxFit.cover);
+      }
+    }
+    if (record.imageUrl.isNotEmpty) {
+      return Image.network(
+        record.imageUrl,
+        width: 70,
+        height: 70,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 70,
+          height: 70,
+          color: Colors.grey[200],
+          child: const Icon(Icons.broken_image, color: Colors.grey),
+        ),
+      );
+    }
+    return Container(
+      width: 70,
+      height: 70,
+      color: Colors.grey[200],
+      child: const Icon(Icons.eco_rounded, color: Colors.grey),
     );
   }
 
