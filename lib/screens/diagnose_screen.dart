@@ -11,7 +11,9 @@ import '../models/diagnosis_record.dart';
 import 'diagnosis_detail_screen.dart';
 
 class DiagnoseScreen extends StatefulWidget {
-  const DiagnoseScreen({super.key});
+  final String selectedPlant;
+
+  const DiagnoseScreen({super.key, required this.selectedPlant});
 
   @override
   State<DiagnoseScreen> createState() => _DiagnoseScreenState();
@@ -130,9 +132,9 @@ class _DiagnoseScreenState extends State<DiagnoseScreen> {
       final savedPath = '${savedDir.path}/diagnosis_$timestamp.jpg';
       await File(sourcePath).copy(savedPath);
 
-      // Run inference
+      // Run inference using selected plant
       final service = PlantDiseaseService();
-      final result = await service.classify(savedPath);
+      final result = await service.classify(savedPath, widget.selectedPlant);
 
       // Get disease info
       final info = PlantDiseaseService.getOverview(result.label);

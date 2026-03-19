@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -21,7 +22,7 @@ class DiagnosisResult {
 }
 
 class PlantDiseaseService {
-  static const String _modelPath = 'assets/ml/plant_disease_model_fp16.tflite';
+  static const String _modelPath = 'assets/ml/plant_disease_model.tflite';
   static const String _labelsPath = 'assets/ml/labels.txt';
   static const int _inputSize = 160;
 
@@ -52,42 +53,94 @@ class PlantDiseaseService {
     final raw = await rootBundle.loadString(_labelsPath);
     _labels =
         raw.split('\n').where((line) => line.trim().isNotEmpty).map((line) {
-      final parts = line.split(' ');
-      return parts.length > 1 ? parts.sublist(1).join(' ') : parts[0];
+      // Labels file format: "0 Apple___Apple_scab"
+      // Split on FIRST space only to preserve spaces in disease names
+      final spaceIdx = line.indexOf(' ');
+      if (spaceIdx > 0) {
+        return line.substring(spaceIdx + 1);
+      }
+      return line;
     }).toList();
+    print('[TFLite] Loaded ${_labels.length} labels: $_labels');
   }
 
-  Future<DiagnosisResult> classify(String imagePath) async {
+  /// Get a list of unique plant names from the labels file
+  Future<List<String>> getUniquePlants() async {
+    if (!isReady) {
+      await initialize();
+    }
+    final Set<String> uniquePlants = {};
+    for (final label in _labels) {
+      final parts = label.split('___');
+      if (parts.isNotEmpty) {
+        final plantName = parts[0].replaceAll('_', ' ');
+        uniquePlants.add(plantName);
+      }
+    }
+    return uniquePlants.toList()..sort();
+  }
+
+  /// Classify an image for a specific plant (used in Diagnose Screen)
+  Future<DiagnosisResult> classify(String imagePath, String selectedPlant) async {
     if (!isReady) {
       await initialize();
       if (!isReady) throw Exception('Service not initialized');
     }
 
-    final imageBytes = await File(imagePath).readAsBytes();
-    final image = img.decodeImage(imageBytes);
-    if (image == null) throw Exception('Cannot decode image');
+    final probabilities = await _runInference(imagePath);
 
-    final resized =
-        img.copyResize(image, width: _inputSize, height: _inputSize);
+    // Filter by selected plant
+    int maxIdx = -1;
+    double maxProb = -1.0;
 
-    final input = Float32List(_inputSize * _inputSize * 3);
-    int idx = 0;
-    for (int y = 0; y < _inputSize; y++) {
-      for (int x = 0; x < _inputSize; x++) {
-        final pixel = resized.getPixel(x, y);
-        input[idx++] = pixel.r.toDouble();
-        input[idx++] = pixel.g.toDouble();
-        input[idx++] = pixel.b.toDouble();
+    final normalizedSelected = selectedPlant.replaceAll(' ', '_');
+    print('[TFLite] Looking for plant: "$normalizedSelected"');
+
+    for (int i = 0; i < probabilities.length; i++) {
+      final label = _labels[i];
+      if (label.startsWith('${normalizedSelected}___') || label == normalizedSelected) {
+        print('[TFLite] MATCH [$i]: $label = ${(probabilities[i] * 100).toStringAsFixed(2)}%');
+        if (probabilities[i] > maxProb) {
+          maxProb = probabilities[i];
+          maxIdx = i;
+        }
       }
     }
 
-    final inputTensor = input.reshape([1, _inputSize, _inputSize, 3]);
-    final output =
-        List.filled(1 * _labels.length, 0.0).reshape([1, _labels.length]);
+    if (maxIdx == -1) {
+       return DiagnosisResult(
+         label: '${selectedPlant}___Unknown',
+         plantName: selectedPlant,
+         diseaseName: 'Không xác định',
+         confidence: 0.0,
+         isHealthy: false,
+       );
+    }
 
-    _interpreter!.run(inputTensor, output);
+    final label = _labels[maxIdx];
+    final parsed = _parseLabel(label);
+    print('[TFLite] Best match: $label (${(maxProb * 100).toStringAsFixed(2)}%)');
 
-    final probabilities = (output[0] as List<double>);
+    return DiagnosisResult(
+      label: label,
+      plantName: parsed['plant']!,
+      diseaseName: parsed['disease']!,
+      confidence: maxProb * 100,
+      isHealthy: label.toLowerCase().contains('healthy'),
+    );
+  }
+
+  /// Classify an image without pre-selecting a plant (used in Chat)
+  /// Returns a DiagnosisResult with the best match across ALL labels
+  Future<DiagnosisResult> classifyForChat(String imagePath) async {
+    if (!isReady) {
+      await initialize();
+      if (!isReady) throw Exception('Service not initialized');
+    }
+
+    final probabilities = await _runInference(imagePath);
+
+    // Find overall best match
     int maxIdx = 0;
     double maxProb = probabilities[0];
     for (int i = 1; i < probabilities.length; i++) {
@@ -99,6 +152,7 @@ class PlantDiseaseService {
 
     final label = _labels[maxIdx];
     final parsed = _parseLabel(label);
+    print('[TFLite-Chat] Best: $label (${(maxProb * 100).toStringAsFixed(2)}%)');
 
     return DiagnosisResult(
       label: label,
@@ -107,6 +161,55 @@ class PlantDiseaseService {
       confidence: maxProb * 100,
       isHealthy: label.toLowerCase().contains('healthy'),
     );
+  }
+
+  /// Core inference logic — returns softmaxed probabilities
+  Future<List<double>> _runInference(String imagePath) async {
+    final inputTensorInfo = _interpreter!.getInputTensor(0);
+    final outputTensorInfo = _interpreter!.getOutputTensor(0);
+    print('[TFLite] Input: shape=${inputTensorInfo.shape}, type=${inputTensorInfo.type}');
+    print('[TFLite] Output: shape=${outputTensorInfo.shape}, type=${outputTensorInfo.type}');
+
+    final imageBytes = await File(imagePath).readAsBytes();
+    final image = img.decodeImage(imageBytes);
+    if (image == null) throw Exception('Cannot decode image');
+
+    final resized = img.copyResize(image, width: _inputSize, height: _inputSize);
+    final rgbBytes = resized.getBytes(order: img.ChannelOrder.rgb);
+
+    // MobileNetV2 preprocessing:
+    // User mentioned "thay vì /255 thì nhân với 255", meaning the model expects [0, 255] 
+    // instead of [0, 1] normalized values. rgbBytes is already [0, 255].
+    final input = Float32List(_inputSize * _inputSize * 3);
+    for (int i = 0; i < rgbBytes.length && i < input.length; i++) {
+      input[i] = rgbBytes[i].toDouble();
+    }
+
+    print('[TFLite] Input pixel samples (after normalization): ${input.sublist(0, 6)}');
+
+    final inputTensor = input.reshape([1, _inputSize, _inputSize, 3]);
+    final output = List.filled(1 * _labels.length, 0.0).reshape([1, _labels.length]);
+
+    _interpreter!.run(inputTensor, output);
+
+    // The output is ALREADY SOFTMAXED by the model (probabilities sum to ~1.0)
+    final probabilities = (output[0] as List<double>);
+
+    // Debug: print raw output range to ensure it's between [0, 1]
+    final rawMin = probabilities.reduce((a, b) => a < b ? a : b);
+    final rawMax = probabilities.reduce((a, b) => a > b ? a : b);
+    print('[TFLite] Output range: min=$rawMin, max=$rawMax');
+
+    // Debug: print top 5
+    final indexed = probabilities.asMap().entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (int i = 0; i < 5 && i < indexed.length; i++) {
+      final e = indexed[i];
+      final lbl = e.key < _labels.length ? _labels[e.key] : '?';
+      print('[TFLite] Top-${i + 1}: $lbl (${(e.value * 100).toStringAsFixed(2)}%)');
+    }
+
+    return probabilities;
   }
 
   Map<String, String> _parseLabel(String label) {

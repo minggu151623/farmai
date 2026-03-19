@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../theme/design_system.dart';
-import 'diagnose_screen.dart';
+import 'plant_selection_screen.dart';
 import 'history_screen.dart';
 import 'market_screen.dart';
 import 'settings_screen.dart';
@@ -19,7 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _screens = [
     const LandingBody(),
-    const DiagnoseScreen(),
+    const Placeholder(), // Index 1 is intercept-navigated to PlantSelectionScreen, so replace DiagnoseScreen with Placeholder
     const HistoryScreen(),
     const MarketScreen(),
   ];
@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (index == 1) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const DiagnoseScreen()),
+        MaterialPageRoute(builder: (context) => const PlantSelectionScreen()),
       );
       return;
     }
@@ -248,7 +248,8 @@ class LandingBody extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (context) => const DiagnoseScreen()),
+                    builder: (context) => const PlantSelectionScreen(),
+                  ),
                 );
               },
             ).animate().scale(delay: 200.ms, duration: 400.ms),
